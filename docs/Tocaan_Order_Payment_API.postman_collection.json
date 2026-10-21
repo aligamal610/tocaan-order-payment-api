@@ -1,0 +1,186 @@
+{
+  "info": {
+    "name": "Tocaan Order & Payment API",
+    "description": "Executable API workflow. Run Authentication > [SUCCESS] Register, then Orders > [SUCCESS] Create Order, Orders > [SUCCESS] Confirm Order, then Payments > [SUCCESS] Process Credit Card Payment.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {"key": "base_url", "value": "http://127.0.0.1:8000/api"},
+    {"key": "token", "value": ""},
+    {"key": "test_email", "value": ""},
+    {"key": "test_password", "value": "Password123!"},
+    {"key": "order_id", "value": ""},
+    {"key": "pending_order_id", "value": ""},
+    {"key": "cancelled_order_id", "value": ""},
+    {"key": "unpaid_order_id", "value": ""},
+    {"key": "payment_id", "value": ""},
+    {"key": "idempotency_key", "value": "postman-payment-001"}
+  ],
+  "item": [
+    {
+      "name": "Authentication",
+      "item": [
+        {
+          "name": "[SUCCESS] Register",
+          "event": [{"listen": "prerequest", "script": {"exec": ["pm.collectionVariables.set('test_email', 'postman.' + Date.now() + '@example.test');"]}}, {"listen": "test", "script": {"exec": ["pm.test('returns 201 JSON with a JWT', function () {", "  pm.response.to.have.status(201);", "  pm.response.to.have.header('Content-Type', /application\\/json/);", "  const body = pm.response.json();", "  pm.expect(body.data.user.email).to.eql(pm.collectionVariables.get('test_email'));", "  pm.expect(body.data.token).to.be.a('string').and.not.empty;", "});", "pm.collectionVariables.set('token', pm.response.json().data.token);"]}}],
+          "request": {"method": "POST", "header": [{"key": "Content-Type", "value": "application/json"}], "body": {"mode": "raw", "raw": "{\n  \"name\": \"Postman Tester\",\n  \"email\": \"{{test_email}}\",\n  \"password\": \"{{test_password}}\",\n  \"password_confirmation\": \"{{test_password}}\"\n}", "options": {"raw": {"language": "json"}}}, "url": "{{base_url}}/register", "description": "Creates a user. Expected: 201 and data.user plus data.token."}
+        },
+        {
+          "name": "[SUCCESS] Login",
+          "event": [{"listen": "test", "script": {"exec": ["pm.test('returns a bearer token', function () {", "  pm.response.to.have.status(200);", "  const body = pm.response.json();", "  pm.expect(body.data.token).to.be.a('string');", "  pm.expect(body.data.token_type).to.eql('bearer');", "  pm.expect(body.data.expires_in).to.be.a('number');", "});", "pm.collectionVariables.set('token', pm.response.json().data.token);"]}}],
+          "request": {"method": "POST", "header": [{"key": "Content-Type", "value": "application/json"}], "body": {"mode": "raw", "raw": "{\n  \"email\": \"{{test_email}}\",\n  \"password\": \"{{test_password}}\"\n}", "options": {"raw": {"language": "json"}}}, "url": "{{base_url}}/login", "description": "Authenticates the registered user and replaces {{token}}. Expected: 200."}
+        },
+        {
+          "name": "[SUCCESS] Get Current User",
+          "event": [{"listen": "test", "script": {"exec": ["pm.test('returns the authenticated user', function () {", "  pm.response.to.have.status(200);", "  pm.expect(pm.response.json().data.email).to.eql(pm.collectionVariables.get('test_email'));", "});"]}}],
+          "request": {"method": "GET", "header": [{"key": "Authorization", "value": "Bearer {{token}}"}], "url": "{{base_url}}/me", "description": "JWT-protected profile endpoint. Expected: 200 and data."}
+        },
+        {
+          "name": "[SUCCESS] Refresh Token",
+          "event": [{"listen": "test", "script": {"exec": ["pm.test('returns a refreshed token', function () {", "  pm.response.to.have.status(200);", "  pm.expect(pm.response.json().data.token).to.be.a('string');", "});", "pm.collectionVariables.set('token', pm.response.json().data.token);"]}}],
+          "request": {"method": "POST", "header": [{"key": "Authorization", "value": "Bearer {{token}}"}], "url": "{{base_url}}/refresh", "description": "Refreshes the JWT. Expected: 200."}
+        },
+        {
+          "name": "[UNAUTHORIZED] Get Current User Without Token",
+          "event": [{"listen": "test", "script": {"exec": ["pm.test('rejects absent authentication', function () { pm.response.to.have.status(401); });"]}}],
+          "request": {"method": "GET", "url": "{{base_url}}/me", "description": "Expected: 401."}
+        },
+        {
+          "name": "[UNAUTHORIZED] Login With Invalid Credentials",
+          "event": [{"listen": "test", "script": {"exec": ["pm.test('returns a safe credential error', function () {", "  pm.response.to.have.status(401);", "  pm.expect(pm.response.json().message).to.eql('Invalid credentials.');", "});"]}}],
+          "request": {"method": "POST", "header": [{"key": "Content-Type", "value": "application/json"}], "body": {"mode": "raw", "raw": "{\"email\":\"nobody@example.test\",\"password\":\"wrong-password\"}", "options": {"raw": {"language": "json"}}}, "url": "{{base_url}}/login", "description": "Expected: 401 with a safe error message."}
+        },
+        {
+          "name": "[VALIDATION ERROR] Register With Invalid Fields",
+          "event": [{"listen": "test", "script": {"exec": ["pm.test('returns Laravel validation errors', function () {", "  pm.response.to.have.status(422);", "  pm.expect(pm.response.json().errors).to.have.property('email');", "});"]}}],
+          "request": {"method": "POST", "header": [{"key": "Content-Type", "value": "application/json"}], "body": {"mode": "raw", "raw": "{\"name\":\"\",\"email\":\"not-an-email\",\"password\":\"short\"}", "options": {"raw": {"language": "json"}}}, "url": "{{base_url}}/register", "description": "Expected: 422 validation response."}
+        },
+        {
+          "name": "[SUCCESS] Logout (Run Last)",
+          "event": [{"listen": "test", "script": {"exec": ["pm.test('logs out with no content', function () { pm.response.to.have.status(204); });", "pm.collectionVariables.unset('token');"]}}],
+          "request": {"method": "POST", "header": [{"key": "Authorization", "value": "Bearer {{token}}"}], "url": "{{base_url}}/logout", "description": "Invalidates the current JWT. Expected: 204. Run after protected tests."}
+        }
+      ]
+    },
+    {
+      "name": "Orders",
+      "item": [
+        {
+          "name": "[SUCCESS] Create Order",
+          "event": [{"listen": "test", "script": {"exec": ["pm.test('creates an order and calculates totals server-side', function () {", "  pm.response.to.have.status(201);", "  const order = pm.response.json().data;", "  pm.expect(order.id).to.exist;", "  pm.expect(order.total).to.eql('1250.00');", "  pm.expect(order.subtotal).to.eql('1250.00');", "  pm.expect(order.items).to.have.lengthOf(2);", "});", "pm.collectionVariables.set('order_id', pm.response.json().data.id);"]}}],
+          "request": {"method": "POST", "header": [{"key": "Authorization", "value": "Bearer {{token}}"}, {"key": "Content-Type", "value": "application/json"}], "body": {"mode": "raw", "raw": "{\n  \"customer_name\": \"Ali Gamal\",\n  \"customer_email\": \"ali@example.test\",\n  \"customer_phone\": \"01012345678\",\n  \"items\": [\n    {\"product_name\": \"Keyboard\", \"quantity\": 2, \"unit_price\": \"500.00\"},\n    {\"product_name\": \"Mouse\", \"quantity\": 1, \"unit_price\": \"250.00\"}\n  ]\n}", "options": {"raw": {"language": "json"}}}, "url": "{{base_url}}/orders", "description": "Creates a pending order. Expected: 201. Saves data.id to {{order_id}}."}
+        },
+        {
+          "name": "[SUCCESS] List Orders With Pagination",
+          "event": [{"listen": "test", "script": {"exec": ["pm.test('returns paginated orders', function () {", "  pm.response.to.have.status(200);", "  const body = pm.response.json();", "  pm.expect(body.data).to.be.an('array');", "  pm.expect(body.meta).to.have.property('current_page');", "  pm.expect(body.links).to.have.property('first');", "});"]}}],
+          "request": {"method": "GET", "header": [{"key": "Authorization", "value": "Bearer {{token}}"}], "url": "{{base_url}}/orders?per_page=10", "description": "Lists only the authenticated user's orders. Expected: 200 with data, links, and meta."}
+        },
+        {
+          "name": "[SUCCESS] Get Order",
+          "event": [{"listen": "test", "script": {"exec": ["pm.test('returns requested order with items', function () {", "  pm.response.to.have.status(200);", "  pm.expect(String(pm.response.json().data.id)).to.eql(String(pm.collectionVariables.get('order_id')));", "  pm.expect(pm.response.json().data.items).to.be.an('array');", "});"]}}],
+          "request": {"method": "GET", "header": [{"key": "Authorization", "value": "Bearer {{token}}"}], "url": "{{base_url}}/orders/{{order_id}}", "description": "Returns an owned order, its item snapshots, and its payments. Expected: 200."}
+        },
+        {
+          "name": "[SUCCESS] Confirm Order (PATCH)",
+          "event": [{"listen": "test", "script": {"exec": ["pm.test('updates the order status to confirmed', function () {", "  pm.response.to.have.status(200);", "  pm.expect(pm.response.json().data.status).to.eql('confirmed');", "});"]}}],
+          "request": {"method": "PATCH", "header": [{"key": "Authorization", "value": "Bearer {{token}}"}, {"key": "Content-Type", "value": "application/json"}], "body": {"mode": "raw", "raw": "{\"status\":\"confirmed\"}", "options": {"raw": {"language": "json"}}}, "url": "{{base_url}}/orders/{{order_id}}", "description": "Actual confirmation workflow: patch status to confirmed before payment. Expected: 200."}
+        },
+        {
+          "name": "[SUCCESS] Filter Orders By Confirmed Status",
+          "event": [{"listen": "test", "script": {"exec": ["pm.test('returns only confirmed orders', function () {", "  pm.response.to.have.status(200);", "  pm.response.json().data.forEach(function (order) { pm.expect(order.status).to.eql('confirmed'); });", "});"]}}],
+          "request": {"method": "GET", "header": [{"key": "Authorization", "value": "Bearer {{token}}"}], "url": "{{base_url}}/orders?status=confirmed&per_page=10", "description": "Filters owned orders by an allowed status. Expected: 200."}
+        },
+        {
+          "name": "[VALIDATION ERROR] Create Order Without Items",
+          "event": [{"listen": "test", "script": {"exec": ["pm.test('requires at least one item', function () {", "  pm.response.to.have.status(422);", "  pm.expect(pm.response.json().errors).to.have.property('items');", "});"]}}],
+          "request": {"method": "POST", "header": [{"key": "Authorization", "value": "Bearer {{token}}"}, {"key": "Content-Type", "value": "application/json"}], "body": {"mode": "raw", "raw": "{\"customer_name\":\"Ali\",\"customer_email\":\"ali@example.test\"}", "options": {"raw": {"language": "json"}}}, "url": "{{base_url}}/orders", "description": "Expected: 422."}
+        },
+        {
+          "name": "[UNAUTHORIZED] List Orders Without Token",
+          "event": [{"listen": "test", "script": {"exec": ["pm.test('requires JWT authentication', function () { pm.response.to.have.status(401); });"]}}],
+          "request": {"method": "GET", "url": "{{base_url}}/orders", "description": "Expected: 401."}
+        },
+        {
+          "name": "[NOT FOUND] Get Nonexistent Order",
+          "event": [{"listen": "test", "script": {"exec": ["pm.test('does not expose unowned or absent orders', function () { pm.response.to.have.status(404); });"]}}],
+          "request": {"method": "GET", "header": [{"key": "Authorization", "value": "Bearer {{token}}"}], "url": "{{base_url}}/orders/999999999", "description": "Expected: 404."}
+        },
+        {
+          "name": "[BUSINESS RULE] Delete Order With Payments (Run After Payment)",
+          "event": [{"listen": "test", "script": {"exec": ["pm.test('prevents deleting an order that has payments', function () {", "  pm.response.to.have.status(409);", "  pm.expect(pm.response.json().message).to.eql('Orders with payments cannot be deleted.');", "});"]}}],
+          "request": {"method": "DELETE", "header": [{"key": "Authorization", "value": "Bearer {{token}}"}], "url": "{{base_url}}/orders/{{order_id}}", "description": "Requires the main workflow payment first. Expected: 409."}
+        },
+        {
+          "name": "[SUCCESS] Delete Unpaid Order (Manual Setup)",
+          "event": [{"listen": "test", "script": {"exec": ["pm.test('deletes an owned order without payments', function () { pm.response.to.have.status(204); });"]}}],
+          "request": {"method": "DELETE", "header": [{"key": "Authorization", "value": "Bearer {{token}}"}], "url": "{{base_url}}/orders/{{unpaid_order_id}}", "description": "Create a separate order, save its ID in {{unpaid_order_id}}, and do not pay it. Expected: 204."}
+        }
+      ]
+    },
+    {
+      "name": "Payments",
+      "item": [
+        {
+          "name": "[SUCCESS] Process Credit Card Payment",
+          "event": [{"listen": "test", "script": {"exec": ["pm.test('creates a successful simulated payment for confirmed order total', function () {", "  pm.response.to.have.status(201);", "  const payment = pm.response.json().data;", "  pm.expect(payment.status).to.eql('successful');", "  pm.expect(payment.method).to.eql('credit_card');", "  pm.expect(payment.amount).to.eql('1250.00');", "  pm.expect(payment.gateway_reference).to.match(/^cc_/);", "});", "pm.collectionVariables.set('payment_id', pm.response.json().data.id);"]}}],
+          "request": {"method": "POST", "header": [{"key": "Authorization", "value": "Bearer {{token}}"}, {"key": "Content-Type", "value": "application/json"}], "body": {"mode": "raw", "raw": "{\"method\":\"credit_card\",\"idempotency_key\":\"{{idempotency_key}}\"}", "options": {"raw": {"language": "json"}}}, "url": "{{base_url}}/orders/{{order_id}}/payments", "description": "Run after confirming the main order. Amount is derived from its total. Expected: 201."}
+        },
+        {
+          "name": "[SUCCESS] Repeat Idempotent Payment",
+          "event": [{"listen": "test", "script": {"exec": ["pm.test('returns the original payment without a duplicate charge', function () {", "  pm.response.to.have.status(200);", "  pm.expect(String(pm.response.json().data.id)).to.eql(String(pm.collectionVariables.get('payment_id')));", "});"]}}],
+          "request": {"method": "POST", "header": [{"key": "Authorization", "value": "Bearer {{token}}"}, {"key": "Content-Type", "value": "application/json"}], "body": {"mode": "raw", "raw": "{\"method\":\"credit_card\",\"idempotency_key\":\"{{idempotency_key}}\"}", "options": {"raw": {"language": "json"}}}, "url": "{{base_url}}/orders/{{order_id}}/payments", "description": "Same order/key is idempotent. Expected: 200 and original payment."}
+        },
+        {
+          "name": "[SUCCESS] Process PayPal Payment",
+          "event": [{"listen": "test", "script": {"exec": ["pm.test('processes the PayPal strategy', function () {", "  pm.response.to.have.status(201);", "  const payment = pm.response.json().data;", "  pm.expect(payment.method).to.eql('paypal');", "  pm.expect(payment.status).to.eql('successful');", "  pm.expect(payment.gateway_reference).to.match(/^pp_/);", "});"]}}],
+          "request": {"method": "POST", "header": [{"key": "Authorization", "value": "Bearer {{token}}"}, {"key": "Content-Type", "value": "application/json"}], "body": {"mode": "raw", "raw": "{\"method\":\"paypal\",\"idempotency_key\":\"postman-paypal-001\"}", "options": {"raw": {"language": "json"}}}, "url": "{{base_url}}/orders/{{order_id}}/payments", "description": "Exercises the second configured strategy. Expected: 201."}
+        },
+        {
+          "name": "[SUCCESS] Get Payment",
+          "event": [{"listen": "test", "script": {"exec": ["pm.test('returns the owned payment', function () {", "  pm.response.to.have.status(200);", "  pm.expect(String(pm.response.json().data.id)).to.eql(String(pm.collectionVariables.get('payment_id')));", "});"]}}],
+          "request": {"method": "GET", "header": [{"key": "Authorization", "value": "Bearer {{token}}"}], "url": "{{base_url}}/payments/{{payment_id}}", "description": "Returns an owned payment. Expected: 200."}
+        },
+        {
+          "name": "[SUCCESS] List Payments With Filters",
+          "event": [{"listen": "test", "script": {"exec": ["pm.test('returns paginated successful credit-card payments', function () {", "  pm.response.to.have.status(200);", "  const body = pm.response.json();", "  pm.expect(body.meta).to.have.property('current_page');", "  body.data.forEach(function (payment) {", "    pm.expect(payment.status).to.eql('successful');", "    pm.expect(payment.method).to.eql('credit_card');", "  });", "});"]}}],
+          "request": {"method": "GET", "header": [{"key": "Authorization", "value": "Bearer {{token}}"}], "url": "{{base_url}}/payments?status=successful&method=credit_card&per_page=10", "description": "Lists the caller's payments, filtered by status and method. Expected: 200."}
+        },
+        {
+          "name": "[SUCCESS] Get Payments For Order",
+          "event": [{"listen": "test", "script": {"exec": ["pm.test('returns payment history for the order', function () {", "  pm.response.to.have.status(200);", "  pm.expect(pm.response.json().data).to.be.an('array');", "});"]}}],
+          "request": {"method": "GET", "header": [{"key": "Authorization", "value": "Bearer {{token}}"}], "url": "{{base_url}}/orders/{{order_id}}/payments", "description": "Returns payments for an owned order. Expected: 200."}
+        },
+        {
+          "name": "[VALIDATION ERROR] Unsupported Payment Method",
+          "event": [{"listen": "test", "script": {"exec": ["pm.test('rejects unsupported methods at validation', function () {", "  pm.response.to.have.status(422);", "  pm.expect(pm.response.json().errors).to.have.property('method');", "});"]}}],
+          "request": {"method": "POST", "header": [{"key": "Authorization", "value": "Bearer {{token}}"}, {"key": "Content-Type", "value": "application/json"}], "body": {"mode": "raw", "raw": "{\"method\":\"bank_transfer\"}", "options": {"raw": {"language": "json"}}}, "url": "{{base_url}}/orders/{{order_id}}/payments", "description": "Only credit_card and paypal are accepted. Expected: 422."}
+        },
+        {
+          "name": "[BUSINESS RULE] Pay Pending Order (Manual Setup)",
+          "event": [{"listen": "test", "script": {"exec": ["pm.test('only confirmed orders are payable', function () {", "  pm.response.to.have.status(409);", "  pm.expect(pm.response.json().message).to.eql('Only confirmed orders can be paid.');", "});"]}}],
+          "request": {"method": "POST", "header": [{"key": "Authorization", "value": "Bearer {{token}}"}, {"key": "Content-Type", "value": "application/json"}], "body": {"mode": "raw", "raw": "{\"method\":\"paypal\"}", "options": {"raw": {"language": "json"}}}, "url": "{{base_url}}/orders/{{pending_order_id}}/payments", "description": "Create a second order but do not confirm it; set {{pending_order_id}}. Expected: 409."}
+        },
+        {
+          "name": "[BUSINESS RULE] Pay Cancelled Order (Manual Setup)",
+          "event": [{"listen": "test", "script": {"exec": ["pm.test('rejects cancelled orders', function () {", "  pm.response.to.have.status(409);", "  pm.expect(pm.response.json().message).to.eql('Only confirmed orders can be paid.');", "});"]}}],
+          "request": {"method": "POST", "header": [{"key": "Authorization", "value": "Bearer {{token}}"}, {"key": "Content-Type", "value": "application/json"}], "body": {"mode": "raw", "raw": "{\"method\":\"credit_card\"}", "options": {"raw": {"language": "json"}}}, "url": "{{base_url}}/orders/{{cancelled_order_id}}/payments", "description": "Create another order, PATCH its status to cancelled, and set {{cancelled_order_id}}. Expected: 409."}
+        },
+        {
+          "name": "[SIMULATED FAILURE] Gateway Exception",
+          "event": [{"listen": "test", "script": {"exec": ["pm.test('records a failed payment without internal exception data', function () {", "  pm.response.to.have.status(201);", "  const payment = pm.response.json().data;", "  pm.expect(payment.status).to.eql('failed');", "  pm.expect(payment.gateway_metadata.reason).to.eql('gateway_error');", "});"]}}],
+          "request": {"method": "POST", "header": [{"key": "Authorization", "value": "Bearer {{token}}"}, {"key": "Content-Type", "value": "application/json"}], "body": {"mode": "raw", "raw": "{\"method\":\"paypal\",\"idempotency_key\":\"postman-gateway-exception\",\"simulate\":\"exception\"}", "options": {"raw": {"language": "json"}}}, "url": "{{base_url}}/orders/{{order_id}}/payments", "description": "Uses the deterministic simulation hook. Expected: 201 with failed payment."}
+        },
+        {
+          "name": "[NOT FOUND] Process Payment For Invalid Order",
+          "event": [{"listen": "test", "script": {"exec": ["pm.test('returns 404 for a missing order', function () { pm.response.to.have.status(404); });"]}}],
+          "request": {"method": "POST", "header": [{"key": "Authorization", "value": "Bearer {{token}}"}, {"key": "Content-Type", "value": "application/json"}], "body": {"mode": "raw", "raw": "{\"method\":\"credit_card\"}", "options": {"raw": {"language": "json"}}}, "url": "{{base_url}}/orders/999999999/payments", "description": "Expected: 404."}
+        },
+        {
+          "name": "[UNAUTHORIZED] List Payments Without Token",
+          "event": [{"listen": "test", "script": {"exec": ["pm.test('requires JWT authentication', function () { pm.response.to.have.status(401); });"]}}],
+          "request": {"method": "GET", "url": "{{base_url}}/payments", "description": "Expected: 401."}
+        }
+      ]
+    }
+  ]
+}
