@@ -25,7 +25,7 @@ Run these requests in order:
 4. `Payments / [SUCCESS] Process Credit Card Payment` saves `payment_id`.
 5. Run payment retrieval/list/history and idempotency requests.
 6. Run `Orders / [BUSINESS RULE] Delete Order With Payments` to verify the 409 protection.
-7. Run logout only after protected scenarios, because it invalidates the collection token.
+7. Run logout only after protected scenarios, because it invalidates the collection token and returns a `200` JSON confirmation.
 
 All protected requests use `Authorization: Bearer {{token}}`. Register and Login have request scripts which set `token` from the actual `data.token` response.
 

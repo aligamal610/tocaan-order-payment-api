@@ -67,7 +67,10 @@ class OrderPaymentApiTest extends TestCase
         $order = Order::factory()->create();
 
         $this->deleteJson('/api/orders/'.$order->id, [], $this->token($order->user))
-            ->assertNoContent();
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('message', 'Order deleted successfully.')
+            ->assertJsonPath('data.id', $order->id);
 
         $this->assertDatabaseMissing('orders', ['id' => $order->id]);
     }
@@ -131,6 +134,7 @@ class OrderPaymentApiTest extends TestCase
             'password_confirmation' => 'password123',
         ])->assertCreated()
             ->assertJsonPath('data.user.email', 'ada@example.test')
+            ->assertJsonMissingPath('data.user.password')
             ->assertJsonStructure(['data' => ['token']]);
 
         $this->postJson('/api/login', [
@@ -144,6 +148,53 @@ class OrderPaymentApiTest extends TestCase
             'password' => 'password123',
         ])->assertOk()
             ->assertJsonStructure(['data' => ['token', 'token_type', 'expires_in']]);
+
+        $this->postJson('/api/register', [
+            'name' => 'Duplicate Ada',
+            'email' => 'ada@example.test',
+            'password' => 'password123',
+            'password_confirmation' => 'password123',
+        ])->assertUnprocessable()
+            ->assertJsonValidationErrors(['email']);
+    }
+
+    public function test_logout_returns_json_and_invalidates_the_current_token(): void
+    {
+        $user = User::factory()->create();
+        $headers = $this->token($user);
+
+        $this->postJson('/api/logout', [], $headers)
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('message', 'Logged out successfully.')
+            ->assertJsonPath('data', null);
+
+        $this->getJson('/api/me', $headers)
+            ->assertUnauthorized()
+            ->assertJsonPath('message', 'Unauthenticated.');
+    }
+
+    public function test_invalid_bearer_token_returns_a_json_unauthenticated_response(): void
+    {
+        $this->getJson('/api/me', [
+            'Authorization' => 'Bearer malformed-token',
+        ])->assertUnauthorized()
+            ->assertJsonPath('message', 'Unauthenticated.');
+    }
+
+    public function test_refresh_returns_a_usable_replacement_token(): void
+    {
+        $user = User::factory()->create();
+        $headers = $this->token($user);
+
+        $response = $this->postJson('/api/refresh', [], $headers)
+            ->assertOk()
+            ->assertJsonStructure(['data' => ['token', 'token_type', 'expires_in']]);
+
+        $this->getJson('/api/me', [
+            'Authorization' => 'Bearer '.$response->json('data.token'),
+        ])->assertOk()
+            ->assertJsonPath('data.id', $user->id);
     }
 
     public function test_payment_ownership_and_gateway_failures_are_handled_safely(): void

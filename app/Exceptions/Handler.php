@@ -2,10 +2,13 @@
 
 namespace App\Exceptions;
 
+use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Auth\AuthenticationException;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Foundation\Exceptions\Handler as ExceptionHandler;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
+use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
 
 class Handler extends ExceptionHandler
 {
@@ -37,6 +40,32 @@ class Handler extends ExceptionHandler
                     'message' => $exception->getMessage(),
                     'errors' => $exception->errors(),
                 ], 422);
+            }
+        });
+
+        $this->renderable(function (AuthorizationException $exception, Request $request) {
+            if ($request->is('api/*')) {
+                return response()->json(['message' => 'Forbidden.'], 403);
+            }
+        });
+
+        $this->renderable(function (ModelNotFoundException $exception, Request $request) {
+            if ($request->is('api/*')) {
+                return response()->json(['message' => 'Resource not found.'], 404);
+            }
+        });
+
+        $this->renderable(function (HttpExceptionInterface $exception, Request $request) {
+            if ($request->is('api/*')) {
+                $status = $exception->getStatusCode();
+                $message = $exception->getMessage() ?: match ($status) {
+                    404 => 'Resource not found.',
+                    405 => 'Method not allowed.',
+                    429 => 'Too many requests.',
+                    default => 'Request could not be processed.',
+                };
+
+                return response()->json(['message' => $message], $status);
             }
         });
     }

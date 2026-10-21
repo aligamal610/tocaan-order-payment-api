@@ -57,8 +57,8 @@
         },
         {
           "name": "[SUCCESS] Logout (Run Last)",
-          "event": [{"listen": "test", "script": {"exec": ["pm.test('logs out with no content', function () { pm.response.to.have.status(204); });", "pm.collectionVariables.unset('token');"]}}],
-          "request": {"method": "POST", "header": [{"key": "Authorization", "value": "Bearer {{token}}"}], "url": "{{base_url}}/logout", "description": "Invalidates the current JWT. Expected: 204. Run after protected tests."}
+          "event": [{"listen": "test", "script": {"exec": ["pm.test('logs out and returns JSON confirmation', function () {", "  pm.response.to.have.status(200);", "  pm.expect(pm.response.json().success).to.eql(true);", "  pm.expect(pm.response.json().message).to.eql('Logged out successfully.');", "});", "pm.collectionVariables.unset('token');"]}}],
+          "request": {"method": "POST", "header": [{"key": "Authorization", "value": "Bearer {{token}}"}], "url": "{{base_url}}/logout", "description": "Invalidates the current JWT. Expected: 200 JSON. Run after protected tests."}
         }
       ]
     },
@@ -112,8 +112,8 @@
         },
         {
           "name": "[SUCCESS] Delete Unpaid Order (Manual Setup)",
-          "event": [{"listen": "test", "script": {"exec": ["pm.test('deletes an owned order without payments', function () { pm.response.to.have.status(204); });"]}}],
-          "request": {"method": "DELETE", "header": [{"key": "Authorization", "value": "Bearer {{token}}"}], "url": "{{base_url}}/orders/{{unpaid_order_id}}", "description": "Create a separate order, save its ID in {{unpaid_order_id}}, and do not pay it. Expected: 204."}
+          "event": [{"listen": "test", "script": {"exec": ["pm.test('deletes an owned order and returns JSON confirmation', function () {", "  pm.response.to.have.status(200);", "  pm.expect(pm.response.json().success).to.eql(true);", "  pm.expect(pm.response.json().data.id).to.exist;", "});"]}}],
+          "request": {"method": "DELETE", "header": [{"key": "Authorization", "value": "Bearer {{token}}"}], "url": "{{base_url}}/orders/{{unpaid_order_id}}", "description": "Create a separate order, save its ID in {{unpaid_order_id}}, and do not pay it. Expected: 200 JSON."}
         }
       ]
     },
